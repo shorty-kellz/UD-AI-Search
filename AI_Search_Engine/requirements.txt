@@ -1,0 +1,18 @@
+# AI Search Engine - Core Requirements
+
+# Core dependencies
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+
+# Data processing
+beautifulsoup4==4.12.2
+html2text==2020.1.16
+lxml==4.9.3
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.31.0
+
+# Development
+pytest==7.4.3 

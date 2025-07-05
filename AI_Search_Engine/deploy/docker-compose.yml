@@ -1,0 +1,20 @@
+# Docker Compose for orchestrating services 
+
+services:
+  sqlite-dev:
+    image: python:3.11-slim
+    container_name: ud-ai-agent-sqlite
+    ports:
+      - "8000:8000"
+    volumes:
+      - "../../AI_Search_Engine/data:/app/data"
+      - "../../AI_Search_Engine/backend:/app/backend"
+      - "../../AI_Search_Engine/frontend:/app/frontend"
+      - "../../AI_Search_Engine/deploy:/app/deploy"
+    working_dir: /app
+    environment:
+      - DATABASE_PATH=/app/data/database/UD_database.db
+      - PYTHONPATH=/app
+    command: /bin/bash
+    stdin_open: true
+    tty: true 
