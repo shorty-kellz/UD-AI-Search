@@ -84,3 +84,5 @@ def get_database_info() -> dict:
             'error': str(e),
             'path': str(DATABASE_PATH)
         }
+
+

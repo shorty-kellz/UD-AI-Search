@@ -132,7 +132,64 @@ st.markdown("""
     .stMarkdown {
         margin-bottom: 0.5rem !important;
     }
-
+    
+    /* Style auto tag plus buttons to be small and integrated */
+    .stButton > button[key*="add_auto_tag_"] {
+        width: 20px !important;
+        height: 20px !important;
+        min-width: 20px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 50% !important;
+        font-size: 10px !important;
+        line-height: 1 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background-color: #f8f9fa !important;
+        border: 1px solid #dee2e6 !important;
+        color: #6c757d !important;
+        position: relative !important;
+        left: auto !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+    
+    .stButton > button[key*="add_auto_tag_"]:hover {
+        background-color: #e9ecef !important;
+        border-color: #adb5bd !important;
+    }
+    
+    /* Style for taxonomy dropdown */
+    .stSelectbox > div > div > div > div {
+        font-family: 'Courier New', monospace;
+        line-height: 1.4;
+    }
+    
+    /* Add some spacing for better readability */
+    .stSelectbox {
+        margin-bottom: 1rem;
+    }
+    
+    /* Make the taxonomy label more prominent */
+    .stSelectbox label {
+        font-weight: bold;
+        color: #2c3e50;
+    }
+    
+    /* Style for the dropdown options */
+    .stSelectbox select option {
+        padding: 4px 8px;
+        font-size: 14px;
+    }
+    
+    /* Add visual separation between categories */
+    .stSelectbox select option[value*="📁"] {
+        font-weight: bold;
+        color: #6c757d;
+        background-color: #f8f9fa;
+    }
+    
 </style>
 """, unsafe_allow_html=True)
 
@@ -231,6 +288,58 @@ def get_taxonomy_subcategories(category: str = None):
         logger.error(f"Error getting taxonomy subcategories: {e}")
         return [], True
 
+def build_taxonomy_options():
+    """
+    Build hierarchical taxonomy options for the unified dropdown.
+    Returns a list of options with L1/L2 prefixes and indentation.
+    Only includes selectable options (L1 without subcategories and L2 subcategories).
+    """
+    categories = get_taxonomy_categories()
+    options = []
+    
+    for category in categories:
+        subcategories, has_subcategories = get_taxonomy_subcategories(category)
+        
+        if has_subcategories:
+            # Add category as a header (non-selectable)
+            options.append(f"📁 {category}")
+            # Add subcategories as selectable options
+            for subcategory in subcategories:
+                options.append(f"    └─ {subcategory}")
+        else:
+            # Category has no subcategories - add as selectable option
+            options.append(f"📄 {category}")
+    
+    return options
+
+def parse_taxonomy_selection(selected_option):
+    """
+    Parse the selected taxonomy option and return category and subcategory.
+    Returns (category, subcategory) where subcategory can be None.
+    """
+    if not selected_option or selected_option == "Select taxonomy...":
+        return None, None
+    
+    if selected_option.startswith("📄 "):
+        # L1 selection (no subcategories)
+        category = selected_option[2:]  # Remove "📄 " prefix
+        return category, None
+    elif selected_option.startswith("    └─ "):
+        # L2 selection - indented subcategory
+        subcategory = selected_option[7:]  # Remove "    └─ " prefix
+        
+        # Find the parent category by looking at the hierarchy
+        categories = get_taxonomy_categories()
+        for category in categories:
+            subcategories, has_subcategories = get_taxonomy_subcategories(category)
+            if has_subcategories and subcategory in subcategories:
+                return category, subcategory
+        
+        # Fallback if not found
+        return None, subcategory
+    
+    return None, None
+
 @st.cache_data(ttl=300)
 def get_categories_and_subcategories():
     """Get existing categories and subcategories from the database (legacy function for backward compatibility)"""
@@ -268,23 +377,17 @@ def get_existing_tags():
         with get_connection() as conn:
             cursor = conn.cursor()
             
-            # Get tags from both tags and FF_tags columns
+            # Get tags from only the tags column (not FF_tags)
             cursor.execute("""
                 SELECT tags FROM content_master 
                 WHERE tags IS NOT NULL AND tags != ''
             """)
             tags_rows = cursor.fetchall()
             
-            cursor.execute("""
-                SELECT FF_tags FROM content_master 
-                WHERE FF_tags IS NOT NULL AND FF_tags != ''
-            """)
-            ff_tags_rows = cursor.fetchall()
-            
             all_tags = set()
             
             # Parse tags from JSON strings
-            for row in tags_rows + ff_tags_rows:
+            for row in tags_rows:
                 try:
                     if row[0]:
                         tags = json.loads(row[0])
@@ -349,7 +452,7 @@ def get_content_by_id(content_id: str) -> Optional[Dict[str, Any]]:
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT id, title, source, summary, FF_tags, category, sub_category, tags, url
+                SELECT id, title, source, summary, FF_tags, auto_tags, category, sub_category, tags, url
                 FROM content_master 
                 WHERE id = ?
             """, (content_id,))
@@ -375,6 +478,15 @@ def get_content_by_id(content_id: str) -> Optional[Dict[str, Any]]:
                         content_dict['tags'] = []
                 else:
                     content_dict['tags'] = []
+                
+                # Parse auto_tags
+                if content_dict.get('auto_tags'):
+                    try:
+                        content_dict['auto_tags'] = json.loads(content_dict['auto_tags'])
+                    except:
+                        content_dict['auto_tags'] = []
+                else:
+                    content_dict['auto_tags'] = []
                 
                 return content_dict
             return None
@@ -504,6 +616,7 @@ def main():
         if st.session_state.previous_content_id != selected_content_id:
             st.session_state.selected_category = "Select category..."
             st.session_state.new_tags_added = []
+            st.session_state.selected_tags_from_auto = []
             st.session_state.show_new_tag_input = False
             st.session_state.previous_content_id = selected_content_id
     else:
@@ -522,6 +635,10 @@ def main():
     
     # 🟧 4. Labeling Form Panel - Split Layout
     st.markdown("### 🏷️ Content Labeling")
+    
+    # Get categories and tags for form (needed in both columns)
+    categories = get_taxonomy_categories()
+    existing_tags = get_existing_tags()
     
     # Create two columns: 2/3 for content, 1/3 for labels
     content_col, labels_col = st.columns([2, 1])
@@ -550,12 +667,47 @@ def main():
                 tags_html += f'<span class="tag-item">{tag}</span>'
             tags_html += '</div>'
             st.markdown(tags_html, unsafe_allow_html=True)
+        
+        # Auto Tags display
+        if selected_content['auto_tags']:
+            st.markdown("**Auto Tags:**")
+            
+            # Get selected auto tags to filter out already selected ones
+            selected_auto_tags = st.session_state.get('selected_tags_from_auto', [])
+            
+            # Filter out tags that are already selected
+            available_auto_tags = [tag for tag in selected_content['auto_tags'] if tag not in selected_auto_tags]
+            
+            if available_auto_tags:
+                # Create auto tags with small plus buttons
+                for i, tag in enumerate(available_auto_tags):
+                    col1, col2 = st.columns([0.3, 4.7])
+                    with col1:
+                        if st.button("➕", key=f"add_auto_tag_{selected_content_id}_{i}", help=f"Add '{tag}' to selected tags"):
+                            # Check if tag exists in existing tags list
+                            if tag in existing_tags:
+                                # Tag exists in existing tags, add it to the multiselect default
+                                if 'selected_tags_from_auto' not in st.session_state:
+                                    st.session_state.selected_tags_from_auto = []
+                                if tag not in st.session_state.selected_tags_from_auto:
+                                    st.session_state.selected_tags_from_auto.append(tag)
+                                st.rerun()
+                            else:
+                                # Tag doesn't exist in existing tags, add to bottom section as before
+                                if tag not in st.session_state.get('selected_tags_from_auto', []):
+                                    if 'selected_tags_from_auto' not in st.session_state:
+                                        st.session_state.selected_tags_from_auto = []
+                                    st.session_state.selected_tags_from_auto.append(tag)
+                                    st.rerun()
+                    with col2:
+                        st.markdown(f'<span class="tag-item" style="background-color: #e8f5e8; color: #2e7d32; display: inline-block; vertical-align: middle; margin-top: 4px;">{tag}</span>', unsafe_allow_html=True)
+            else:
+                st.markdown("*All auto tags have been selected*")
+        else:
+            st.markdown("**Auto Tags:**")
+            st.markdown("*No automatic tags exist*")
     
     with labels_col:
-        # Get categories and tags for form
-        categories = get_taxonomy_categories()
-        existing_tags = get_existing_tags()
-        
         # Check if taxonomy data exists
         if not categories:
             st.error("❌ No taxonomy categories found. Please run the taxonomy ingestion pipeline first.")
@@ -564,69 +716,77 @@ def main():
         # Labeling form
         st.markdown("**Apply Labels:**")
         
-        # Category selection
-        category_options = ["Select category..."] + categories
-        current_index = 0
-        if st.session_state.selected_category != "Select category...":
-            try:
-                current_index = category_options.index(st.session_state.selected_category)
-            except ValueError:
-                current_index = 0
+        # Unified taxonomy selection
+        all_taxonomy_options = ["Select taxonomy..."] + build_taxonomy_options()
         
-        category = st.selectbox(
-            "Category *",
-            category_options,
+        # Filter out category headers (📁) to make them non-selectable
+        selectable_options = ["Select taxonomy..."]
+        for option in all_taxonomy_options[1:]:  # Skip "Select taxonomy..."
+            if not option.startswith("📁 "):  # Only include selectable options
+                selectable_options.append(option)
+        
+        # Get current selection for default value
+        current_selection = "Select taxonomy..."
+        if st.session_state.get('selected_taxonomy'):
+            current_selection = st.session_state.selected_taxonomy
+        
+        # Find the index of current selection
+        current_index = 0
+        if current_selection in selectable_options:
+            current_index = selectable_options.index(current_selection)
+        
+        selected_taxonomy = st.selectbox(
+            "Select Taxonomy *",
+            selectable_options,
             index=current_index,
-            key=f"category_select_{selected_content_id}"
+            key=f"taxonomy_select_{selected_content_id}"
         )
         
-        # Update session state when category changes
-        if category != st.session_state.selected_category:
-            st.session_state.selected_category = category
-            # Clear subcategory cache to get fresh data
-            get_taxonomy_subcategories.clear()
+        # Update session state when taxonomy changes
+        if selected_taxonomy != st.session_state.get('selected_taxonomy'):
+            st.session_state.selected_taxonomy = selected_taxonomy
             st.rerun()
         
-        # Dynamic subcategory selection based on selected category
-        if category != "Select category...":
-            subcategories, has_subcategories = get_taxonomy_subcategories(category)
-            
-            if has_subcategories:
-                # Category has subcategories, show them
-                subcategory = st.selectbox(
-                    "Sub-category *",
-                    ["Select sub-category..."] + subcategories,
-                    index=0,
-                    key=f"subcategory_select_{selected_content_id}"
-                )
-            else:
-                # Category has no subcategories, auto-populate with "No Sub Category Needed"
-                st.selectbox(
-                    "Sub-category *",
-                    ["No Sub Category Needed"],
-                    index=0,
-                    key=f"subcategory_select_{selected_content_id}"
-                )
-                subcategory = "No Sub Category Needed"
-        else:
-            # No category selected, show empty subcategory dropdown
-            subcategory = st.selectbox(
-                "Sub-category *",
-                ["Select sub-category..."],
-                index=0,
-                key=f"subcategory_select_{selected_content_id}"
-            )
+        # Parse the selection to get category and subcategory
+        category, subcategory = parse_taxonomy_selection(selected_taxonomy)
         
         # Tags selection with ability to add new ones
         st.markdown("**Tags *:**")
         
         # Full-width existing tags selection
+        # Get auto tags that exist in the existing tags list
+        auto_tags_in_existing = []
+        if st.session_state.get('selected_tags_from_auto', []):
+            auto_tags_in_existing = [tag for tag in st.session_state.selected_tags_from_auto if tag in existing_tags]
+        
+        # Track previous selection to detect removals
+        previous_selection_key = f"previous_selection_{selected_content_id}"
+        if previous_selection_key not in st.session_state:
+            st.session_state[previous_selection_key] = auto_tags_in_existing
+        
         selected_tags = st.multiselect(
             "Select existing tags",
             existing_tags,
-            default=[],
+            default=auto_tags_in_existing,
             key=f"tags_select_{selected_content_id}"
         )
+        
+        # Check for removed auto tags and add them back to available list
+        previous_selection = st.session_state[previous_selection_key]
+        removed_tags = [tag for tag in previous_selection if tag not in selected_tags]
+        
+        # Only handle auto tags that were removed
+        removed_auto_tags = [tag for tag in removed_tags if tag in st.session_state.get('selected_tags_from_auto', [])]
+        
+        if removed_auto_tags:
+            # Remove these tags from the session state so they reappear on the left
+            for tag in removed_auto_tags:
+                if tag in st.session_state.selected_tags_from_auto:
+                    st.session_state.selected_tags_from_auto.remove(tag)
+            st.rerun()
+        
+        # Update previous selection for next iteration
+        st.session_state[previous_selection_key] = selected_tags
         
         # Create new tag button and input
         if st.button("➕ Create New Tag", key=f"create_tag_btn_{selected_content_id}"):
@@ -640,10 +800,51 @@ def main():
             new_tag = st.text_input("Enter new tag name:", key=input_key)
             if new_tag and new_tag.strip():
                 new_tag_clean = new_tag.strip()
-                # Add to new tags list for this session
-                if new_tag_clean not in st.session_state.new_tags_added:
-                    st.session_state.new_tags_added.append(new_tag_clean)
+                
+                # Check if tag already exists in existing tags list (case-insensitive)
+                existing_tag_found = None
+                for existing_tag in existing_tags:
+                    if new_tag_clean.lower() == existing_tag.lower():
+                        existing_tag_found = existing_tag
+                        break
+                
+                if existing_tag_found:
+                    # Tag exists (case-insensitive match) - add it to the existing tags selection instead of new tags
+                    if existing_tag_found not in selected_tags:
+                        # Add to session state to update the multiselect default
+                        if 'selected_tags_from_auto' not in st.session_state:
+                            st.session_state.selected_tags_from_auto = []
+                        if existing_tag_found not in st.session_state.selected_tags_from_auto:
+                            st.session_state.selected_tags_from_auto.append(existing_tag_found)
+                    st.success(f"✅ Tag '{new_tag_clean}' matches existing tag '{existing_tag_found}' and has been selected!")
                     st.rerun()
+                else:
+                    # Tag doesn't exist - add to new tags list for this session
+                    if new_tag_clean not in st.session_state.new_tags_added:
+                        st.session_state.new_tags_added.append(new_tag_clean)
+                        st.rerun()
+        
+        # Display auto tags that have been selected (only those not in existing tags list)
+        auto_tags_not_in_existing = []
+        if st.session_state.get('selected_tags_from_auto', []):
+            auto_tags_not_in_existing = [tag for tag in st.session_state.selected_tags_from_auto if tag not in existing_tags]
+        
+        if auto_tags_not_in_existing:
+            st.markdown("**Auto Tags Selected:**")
+            
+            # Display each auto tag on its own row with individual remove button on the left
+            for i, tag in enumerate(auto_tags_not_in_existing):
+                col1, col2 = st.columns([0.3, 4.7])
+                with col1:
+                    if st.button("×", key=f"remove_auto_tag_{selected_content_id}_{i}", help="Remove this auto tag"):
+                        # Remove from session state
+                        if tag in st.session_state.selected_tags_from_auto:
+                            st.session_state.selected_tags_from_auto.remove(tag)
+                        st.rerun()
+                with col2:
+                    st.markdown(f'<span class="tag-item" style="background-color: #e8f5e8; color: #2e7d32; display: inline-block; vertical-align: middle; margin-top: 4px;">{tag}</span>', unsafe_allow_html=True)
+            
+
         
         # Display newly added tags
         if st.session_state.get('new_tags_added', []):
@@ -664,9 +865,14 @@ def main():
                 st.session_state.new_tags_added = []
                 st.rerun()
     
-    # Combine existing and new tags
+    # Combine existing, new, and auto tags
     all_tags = selected_tags.copy()
     all_tags.extend(st.session_state.get('new_tags_added', []))
+    # Only add auto tags that are not already in the existing tags list (to avoid duplicates)
+    auto_tags_not_in_existing = []
+    if st.session_state.get('selected_tags_from_auto', []):
+        auto_tags_not_in_existing = [tag for tag in st.session_state.selected_tags_from_auto if tag not in existing_tags]
+    all_tags.extend(auto_tags_not_in_existing)
     
     # Show tag count indicator
     tag_count = len(all_tags)
@@ -683,21 +889,16 @@ def main():
     
     if submit_button:
         # Validation
-        if category == "Select category...":
-            st.error("❌ Please select a category before submitting.")
-        elif subcategory == "Select sub-category...":
-            st.error("❌ Please select a sub-category before submitting.")
+        if selected_taxonomy == "Select taxonomy...":
+            st.error("❌ Please select a taxonomy before submitting.")
         elif not all_tags:  # Check if no tags are selected or created
             st.error("❌ Please select at least one tag before submitting.")
         else:
-            # Handle "No Sub Category Needed" case
-            if subcategory == "No Sub Category Needed":
-                subcategory_to_save = None
-            else:
-                subcategory_to_save = subcategory
+            # Parse the taxonomy selection
+            category, subcategory = parse_taxonomy_selection(selected_taxonomy)
             
             # Save labels
-            success = save_labels(selected_content_id, category, subcategory_to_save, all_tags)
+            success = save_labels(selected_content_id, category, subcategory, all_tags)
             
             if success:
                 st.success("✅ Labels saved successfully!")
@@ -705,8 +906,12 @@ def main():
                 # Clear cache to refresh data
                 get_database_stats.clear()
                 
-                # Reset selection
+                # Reset all form selections
                 st.session_state.selected_content_id = None
+                st.session_state.selected_taxonomy = "Select taxonomy..."
+                st.session_state.selected_tags_from_auto = []
+                st.session_state.new_tags_added = []
+                st.session_state.show_new_tag_input = False
                 
                 # Rerun to refresh the interface
                 st.rerun()

@@ -62,6 +62,55 @@ class TableRegistry:
                     'CREATE UNIQUE INDEX IF NOT EXISTS idx_taxonomy_unique ON taxonomy_master(domain, category, sub_category)'
                 ]
             },
+            'test_questions': {
+                'description': 'Test questions for evaluation and testing',
+                'schema': '''
+                    CREATE TABLE test_questions (
+                        question_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        question_text TEXT NOT NULL UNIQUE
+                    )
+                ''',
+                'indexes': [
+                    'CREATE INDEX IF NOT EXISTS idx_test_questions_text ON test_questions(question_text)'
+                ]
+            },
+            'results': {
+                'description': 'Search results with SME feedback',
+                'schema': '''
+                    CREATE TABLE results (
+                        result_id TEXT NOT NULL,               -- UUID for grouping results from same submission
+                        
+                        -- Link to test question
+                        question_id INTEGER REFERENCES test_questions(question_id),
+                        question_text TEXT,
+                        
+                        -- System output
+                        rank INTEGER NOT NULL,                  -- AI-assigned position (1 = most relevant)
+                        title TEXT NOT NULL,
+                        explanation TEXT,
+                        tags_matched TEXT,
+                        url TEXT,
+                        relevance_score_model FLOAT,           -- Score assigned by AI agent
+                        agent_version TEXT,                    -- Version of AI agent used for this result
+                        
+                        -- SME feedback (per result)
+                        is_relevant_sme BOOLEAN,
+                        relevance_score_sme INTEGER, 
+                        ideal_rank_sme INTEGER,                -- SME's preferred ranking position
+                        
+                        -- SME metadata
+                        sme_user_type TEXT,                    -- e.g., doctor, nurse, chaplain
+                        
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''',
+                'indexes': [
+                    'CREATE INDEX IF NOT EXISTS idx_results_result_id ON results(result_id)',
+                    'CREATE INDEX IF NOT EXISTS idx_results_question_id ON results(question_id)',
+                    'CREATE INDEX IF NOT EXISTS idx_results_sme_user_type ON results(sme_user_type)',
+                    'CREATE INDEX IF NOT EXISTS idx_results_created_at ON results(created_at)'
+                ]
+            },
             # Add more tables here as needed
             # 'users': { ... },
             # 'analytics': { ... },

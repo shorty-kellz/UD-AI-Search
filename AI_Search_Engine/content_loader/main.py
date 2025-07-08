@@ -87,6 +87,36 @@ def run_taxonomy_pipeline():
     except Exception as e:
         print(f"❌ Error running Taxonomy pipeline: {e}")
 
+def run_test_questions_pipeline():
+    """Run Test Questions ingestion pipeline"""
+    print("🚀 Starting Test Questions Pipeline...")
+    print("=" * 50)
+    
+    try:
+        # Import the test questions ingestion module
+        import ingest_test_questions
+        
+        # Run the test questions ingestion
+        ingest_test_questions.main()
+        
+    except Exception as e:
+        print(f"❌ Error running Test Questions pipeline: {e}")
+
+def run_auto_tagging_pipeline():
+    """Run Auto-Tagging batch processing pipeline"""
+    print("🚀 Starting Auto-Tagging Batch Pipeline...")
+    print("=" * 50)
+    
+    try:
+        # Import the auto-tagging engine
+        import autotag_engine
+        
+        # Run the auto-tagging batch processing
+        autotag_engine.main()
+        
+    except Exception as e:
+        print(f"❌ Error running Auto-Tagging pipeline: {e}")
+
 def show_menu():
     """Show the pipeline selection menu"""
     print("\n" + "=" * 50)
@@ -97,7 +127,9 @@ def show_menu():
     print("2. UD Content Pipeline (not implemented)")
     print("3. Textbook Pipeline (not implemented)")
     print("4. Taxonomy Pipeline (taxonomy structure)")
-    print("5. Exit")
+    print("5. Test Questions Pipeline (test questions)")
+    print("6. Auto-Tagging Pipeline (batch auto-tagging)")
+    print("7. Exit")
     print("=" * 50)
 
 def main():
@@ -108,7 +140,7 @@ def main():
         show_menu()
         
         try:
-            choice = input("Enter your choice (1-5): ").strip()
+            choice = input("Enter your choice (1-7): ").strip()
             
             if choice == "1":
                 success = run_fast_fact_pipeline()
@@ -127,11 +159,17 @@ def main():
                 run_taxonomy_pipeline()
                 
             elif choice == "5":
+                run_test_questions_pipeline()
+                
+            elif choice == "6":
+                run_auto_tagging_pipeline()
+                
+            elif choice == "7":
                 print("👋 Goodbye!")
                 break
                 
             else:
-                print("❌ Invalid choice. Please enter 1, 2, 3, or 4.")
+                print("❌ Invalid choice. Please enter 1, 2, 3, 4, 5, 6, or 7.")
                 
         except KeyboardInterrupt:
             print("\n\n👋 Goodbye!")
@@ -140,7 +178,7 @@ def main():
             print(f"❌ Unexpected error: {e}")
         
         # Ask if user wants to run another pipeline
-        if choice in ["1", "2", "3", "4"]:
+        if choice in ["1", "2", "3", "4", "5", "6"]:
             run_another = input("\nRun another pipeline? (y/n): ").strip().lower()
             if run_another not in ["y", "yes"]:
                 print("👋 Goodbye!")

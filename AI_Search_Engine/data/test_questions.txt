@@ -1,0 +1,21 @@
+# Test Questions for AI Search Engine Evaluation
+# Each line should contain one clinical question
+# Lines starting with # are comments and will be ignored
+
+What are best practices in conducting code status conversation?
+
+What is the best treatment for delirium?
+
+How do I manage my patients constipation?
+
+What is terminal delirium and how do I manage it?
+
+What is the best approach to talking about prognosis?
+
+What is the best way to help manage anxiety in a patient? 
+
+What is spirital distress?
+
+How do I talk to the patient who is holding out for a miracle but is dying?
+
+What is the dose of medication to help a suffering patient die more quickly?
